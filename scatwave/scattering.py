@@ -7,9 +7,10 @@ __all__ = ['Scattering']
 
 import warnings
 import torch
-from .utils import cdgmm, Modulus, Periodize, Fft, Fft3d, SolidHarmonicModulus
+from .utils import cdgmm, Modulus, Periodize, Fft, solid_harmonic_convolution_and_modulus, spatial_subsample, compute_integrals
 from .filters_bank import filters_bank, solid_harmonic_filters_bank
 from torch.legacy.nn import SpatialReflectionPadding as pad_function
+
 
 class SolidHarmonicScattering(object):
     """Scattering module.
@@ -24,8 +25,6 @@ class SolidHarmonicScattering(object):
     def __init__(self, M, N, O, J, L):
         super(SolidHarmonicScattering, self).__init__()
         self.M, self.N, self.O, self.J, self.L = M, N, O, J, L
-        self.fft = Fft3d()
-        self.modulus = SolidHarmonicModulus()
         self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.J, self.L)
 
     def forward(self, input, integral_powers):
@@ -42,23 +41,21 @@ class SolidHarmonicScattering(object):
             raise (RuntimeError('Input tensor must be 4D'))
 
         Q = len(integral_powers)
-        n_inputs = 100
+        n_inputs = input.size(0)
         s_order_1 = np.zeros((n_inputs, self.L, self.J+1, Q))
-        s_order_2= np.zeros((n_inputs, self.L, self.J*(self.J+1)/2, Q))
+        s_order_2 = np.zeros((n_inputs, self.L, self.J*(self.J+1)/2, Q))
 
-        batch_size = 10
         for l in range(1, self.L + 1):
             filters_l = self.filters[l-1]
-            for i_batch, input_batch in []:
+            for i_input in range(n_inputs):
                 i_coef = 0
                 for j_1 in range(self.J+1):
-                    # perform the convolution + molulus of the input batch with psi_{l,j_1}
-                    for i_q, q in enumerate(integral_powers):
-                        s_order_1[(i_batch)*batch_size:(i_batch+1)*batch_size, l-1, j_1, i_q] = 0 # compute the scattering coefficients l j1
+                    conv_modulus = solid_harmonic_convolution_and_modulus(input[i_input], filters_l[j_1])
+                    s_order_1[i_input, l-1, j_1] = compute_integrals(conv_modulus, integral_powers)
+                    conv_modulus = spatial_subsample(conv_modulus, 2**j_1)
                     for j_2 in range(j_1+1, self.J+1):
-                        # perform the second order convolutions + modulus with psi_{l,j_2}
-                        for i_q, q in enumerate(integral_powers):
-                            s_order_2[i_batch*batch_size:(i_batch+1)*batch_size, l-1, i_coef, i_q] = 0 # compute the second order coefficients
+                        conv_modulus_2 = solid_harmonic_convolution_and_modulus(conv_modulus, filters_l[j_2])
+                        s_order_2[i_input, l-1, i_coef] = compute_integrals(conv_modulus_2, integral_powers)
                         i_coef += 1
 
         return s_order_1, s_order_2
