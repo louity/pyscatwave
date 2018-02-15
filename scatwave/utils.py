@@ -28,11 +28,22 @@ def spatial_subsample(signal, stride):
     raise NotImplementedError("TODO")
 
 
+def periodize_filters(filters, ratio):
+    raise NotImplementedError("TODO")
+
 def solid_harmonic_convolution_and_modulus(signal, filters_l):
     l = (filters_l.shape[0] - 1) // 2
+    if signal.shape != filters_l.shape[1:]:
+        M, N, O = signal.shape
+        M_, N_, O_ = filters_l.shape[1:]
+        assert (M % M_ == 0) and  (M / M_ == N / N_) and (O / O_ == N / N_), 'shapes incompatible'
+        ratio =  int(M / M_)
+        filters = periodize_filters(filters_l, ratio)
+    else:
+        filters = filters_l
     convolution_modulus = np.zeros_like(signal)
     for m in range(2*l+1):
-        convolution_modulus += np.abs(fft_convolve(signal, filters_l[m]))**2
+        convolution_modulus += np.abs(fft_convolve(signal, filters[m]))**2
     return np.sqrt(convolution_modulus)
 
 
