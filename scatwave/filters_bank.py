@@ -125,11 +125,10 @@ def solid_harmonic_3d(M, N, O, sigma, l, out_array=None):
     for i_m, m in enumerate(range(-l, l+1)):
         solid_harm[i_m] = sph_harm(m, l, azimuthal, polar) * polynomial_gaussian
 
-    #TODO
     if l % 2 == 0:
-        norm_factor = np.pi / (np.power(2, (l-1)/2) * np.sqrt(2*l+1) * factorial((l+1)/2))
+        norm_factor = 1. / (sigma**3 * np.pi * np.sqrt(l+0.5) * double_factorial(l+1))
     else :
-        norm_factor = np.sqrt(8*np.pi) / (np.sqrt(2*l+1) * double_factorial(l+1))
-
+        norm_factor = 1. / (sigma**3 * np.power(2, (l+1)/2) * np.sqrt(np.pi*(2*l+1)) * factorial((l+1)/2))
     solid_harm *= norm_factor
+
     return solid_harm
