@@ -8,7 +8,8 @@ __all__ = ['filters_bank']
 import torch
 import numpy as np
 import scipy.fftpack as fft
-
+from scipy.special import sph_harm, factorial
+from .utils import get_3d_angles, double_factorial
 
 
 
@@ -41,6 +42,17 @@ def filters_bank(M, N, J, L=8):
         filters['phi'][res]=torch.FloatTensor(np.stack((np.real(phi_signal_fourier_res), np.imag(phi_signal_fourier_res)), axis=2))
         filters['phi'][res].div_(M*N // 2 ** (2 * J))
 
+    return filters
+
+
+def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0=2.):
+    filters = []
+    for l in range(1, L+1):
+        filters_l = np.zeros((J+1, 2*l+1, M, N, O))
+        for j in range(J+1):
+            sigma = sigma_0 * 2**j
+            solid_harmonic_3d(M, N, O, sigma, l, out_array=filters_l[j, :, :, :, ])
+        filters.append(filters_l)
     return filters
 
 
@@ -98,3 +110,26 @@ def gabor_2d(M, N, sigma, theta, xi, slant=1.0, offset=0, fft_shift=None):
     if (fft_shift):
         gab = np.fft.fftshift(gab, axes=(0, 1))
     return gab
+
+
+def solid_harmonic_3d(M, N, O, sigma, l, out_array=None):
+    if out_array is None:
+        solid_harm = np.zeros((2*(l+1), M, N, O), np.complex64)
+    else:
+        solid_harm = out_array
+    grid = np.mgrid[-M//2:M//2, -N//2:N//2, -O//2:O//2]
+    r_square = (grid**2).sum(0)
+    polynomial_gaussian = r_square**(0.5*l) / sigma**l * np.exp(-0.5 * r_square / sigma**2)
+    polar, azimuthal = get_3d_angles(grid)
+
+    for i_m, m in enumerate(range(-l, l+1)):
+        solid_harm[i_m] = sph_harm(m, l, azimuthal, polar) * polynomial_gaussian
+
+    #TODO
+    if l % 2 == 0:
+        norm_factor = np.pi / (np.power(2, (l-1)/2) * np.sqrt(2*l+1) * factorial((l+1)/2))
+    else :
+        norm_factor = np.sqrt(8*np.pi) / (np.sqrt(2*l+1) * double_factorial(l+1))
+
+    solid_harm *= norm_factor
+    return solid_harm

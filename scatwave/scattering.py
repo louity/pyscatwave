@@ -7,10 +7,65 @@ __all__ = ['Scattering']
 
 import warnings
 import torch
-from .utils import cdgmm, Modulus, Periodize, Fft
-from .filters_bank import filters_bank
+from .utils import cdgmm, Modulus, Periodize, Fft, Fft3d, SolidHarmonicModulus
+from .filters_bank import filters_bank, solid_harmonic_filters_bank
 from torch.legacy.nn import SpatialReflectionPadding as pad_function
 
+class SolidHarmonicScattering(object):
+    """Scattering module.
+
+    Runs solid scattering on an input 3D image
+
+    Input args:
+        M, N, O: input 3D image size
+        J: number of scales
+        L: number of l values
+    """
+    def __init__(self, M, N, O, J, L):
+        super(SolidHarmonicScattering, self).__init__()
+        self.M, self.N, self.O, self.J, self.L = M, N, O, J, L
+        self.fft = Fft3d()
+        self.modulus = SolidHarmonicModulus()
+        self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.J, self.L)
+
+    def forward(self, input, integral_powers):
+        if not torch.is_tensor(input):
+            raise(TypeError('The input should be a torch.cuda.FloatTensor, a torch.FloatTensor or a torch.DoubleTensor'))
+
+        if (not input.is_contiguous()):
+            raise (RuntimeError('Tensor must be contiguous!'))
+
+        if((input.size(-1)!=self.O or input.size(-2)!=self.N or input.size(-3)!=self.M)):
+            raise (RuntimeError('Tensor must be of spatial size (%i,%i,%i)!'%(self.M,self.N,self.O)))
+
+        if (input.dim() != 4):
+            raise (RuntimeError('Input tensor must be 4D'))
+
+        Q = len(integral_powers)
+        n_inputs = 100
+        s_order_1 = np.zeros((n_inputs, self.L, self.J+1, Q))
+        s_order_2= np.zeros((n_inputs, self.L, self.J*(self.J+1)/2, Q))
+
+        batch_size = 10
+        for l in range(1, self.L + 1):
+            filters_l = self.filters[l-1]
+            for i_batch, input_batch in []:
+                i_coef = 0
+                for j_1 in range(self.J+1):
+                    # perform the convolution + molulus of the input batch with psi_{l,j_1}
+                    for i_q, q in enumerate(integral_powers):
+                        s_order_1[(i_batch)*batch_size:(i_batch+1)*batch_size, l-1, j_1, i_q] = 0 # compute the scattering coefficients l j1
+                    for j_2 in range(j_1+1, self.J+1):
+                        # perform the second order convolutions + modulus with psi_{l,j_2}
+                        for i_q, q in enumerate(integral_powers):
+                            s_order_2[i_batch*batch_size:(i_batch+1)*batch_size, l-1, i_coef, i_q] = 0 # compute the second order coefficients
+                        i_coef += 1
+
+        return s_order_1, s_order_2
+
+
+    def __call__(self, input):
+        return self.forward(input)
 
 class Scattering(object):
     """Scattering module.
