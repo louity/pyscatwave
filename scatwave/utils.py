@@ -18,6 +18,14 @@ Stream = namedtuple('Stream', ['ptr'])
 
 
 def compute_integrals(signal, integral_powers):
+    """Computes integrals of the signal to the given powers.
+
+    Input args:
+        signal: 3D signal to be integrated
+        integral_powers: list of positive floats, powers of the integrals
+    Returns:
+        integrals: list of the integrals
+    """
     integrals = np.zeros(len(integral_powers))
     for i_q, q in enumerate(integral_powers):
         integrals[i_q] = np.sum(signal**q)
@@ -32,6 +40,15 @@ def periodize_filters(filters, ratio):
     raise NotImplementedError("TODO")
 
 def solid_harmonic_convolution_and_modulus(signal, filters_l):
+    """Computes solid harmonic convolution + modulus for a given l.
+
+    Input args:
+        signal: 3D signal of shape (M, N, O)
+        filters_l: 4D tensor of shape (2l+1, M, N, O), solid harmonic wavelets
+                   of order l
+    Returns:
+        convolution_modulus: 3D signal of shape (M, N, O)
+    """
     l = (filters_l.shape[0] - 1) // 2
     if signal.shape != filters_l.shape[1:]:
         M, N, O = signal.shape
@@ -47,8 +64,14 @@ def solid_harmonic_convolution_and_modulus(signal, filters_l):
     return np.sqrt(convolution_modulus)
 
 
-def get_3d_angles(grid):
-    z, y, x = grid
+def get_3d_angles(cartesian_grid):
+    """Given a cartisian grid, computes the spherical coord angles (theta, phi).
+    Input args:
+        cartesian_grid: 4D tensor of shape (3, M, N, O)
+    Returns:
+        polar, azimutal: 3D tensors of shape (M, N, O).
+    """
+    z, y, x = cartesian_grid
     azimuthal = np.arctan2(y, x)
     rxy = np.sqrt(x ** 2 + y ** 2)
     polar = np.arctan2(z, rxy) + np.pi / 2

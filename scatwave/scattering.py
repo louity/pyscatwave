@@ -50,19 +50,19 @@ class SolidHarmonicScattering(object):
             for i_input in range(n_inputs):
                 i_coef = 0
                 for j_1 in range(self.J+1):
-                    conv_modulus = solid_harmonic_convolution_and_modulus(input[i_input], filters_l[j_1])
+                    conv_modulus = solid_harmonic_convolution_and_modulus(input[i_input], filters_l[j_1]) # conv_modulus ~ (M, N, O), input[i_input] ~ (M, N ,O), filters_l[j_1] ~ (2l+1, M, N, O)
                     s_order_1[i_input, l-1, j_1] = compute_integrals(conv_modulus, integral_powers)
-                    conv_modulus = spatial_subsample(conv_modulus, 2**j_1)
+                    conv_modulus_subsampled = spatial_subsample(conv_modulus, 2**j_1) # conv_modulus_subsampled ~ (M/2**j_1, N/2**j_1, O/2**j_1), conv_modulus ~ (M, N, O)
                     for j_2 in range(j_1+1, self.J+1):
-                        conv_modulus_2 = solid_harmonic_convolution_and_modulus(conv_modulus, filters_l[j_2])
+                        conv_modulus_2 = solid_harmonic_convolution_and_modulus(conv_modulus_subsampled, filters_l[j_2]) # conv_modulus_2 ~ (M/2**j_1, N/2**j_1, O/2**j_1)
                         s_order_2[i_input, l-1, i_coef] = compute_integrals(conv_modulus_2, integral_powers)
                         i_coef += 1
 
         return s_order_1, s_order_2
 
 
-    def __call__(self, input):
-        return self.forward(input)
+    def __call__(self, input, integral_powers):
+        return self.forward(input, integral_powers)
 
 class Scattering(object):
     """Scattering module.

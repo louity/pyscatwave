@@ -45,13 +45,13 @@ def filters_bank(M, N, J, L=8):
     return filters
 
 
-def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0=2.):
+def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0=2., fourier=False):
     filters = []
     for l in range(1, L+1):
         filters_l = np.zeros((J+1, 2*l+1, M, N, O))
         for j in range(J+1):
             sigma = sigma_0 * 2**j
-            solid_harmonic_3d(M, N, O, sigma, l, out_array=filters_l[j, :, :, :, ])
+            solid_harmonic_3d(M, N, O, sigma, l, out_array=filters_l[j, :, :, :, ], fourier=fourier)
         filters.append(filters_l)
     return filters
 
@@ -112,11 +112,13 @@ def gabor_2d(M, N, sigma, theta, xi, slant=1.0, offset=0, fft_shift=None):
     return gab
 
 
-def solid_harmonic_3d(M, N, O, sigma, l, out_array=None):
+def solid_harmonic_3d(M, N, O, sigma, l, out_array=None, fourier=fourier):
     if out_array is None:
         solid_harm = np.zeros((2*(l+1), M, N, O), np.complex64)
     else:
         solid_harm = out_array
+    if fourier:
+        raise NotImplementedError("TODO: implement solid harm wavelets in Fourier")
     grid = np.mgrid[-M//2:M//2, -N//2:N//2, -O//2:O//2]
     r_square = (grid**2).sum(0)
     polynomial_gaussian = r_square**(0.5*l) / sigma**l * np.exp(-0.5 * r_square / sigma**2)
