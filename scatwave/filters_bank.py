@@ -12,7 +12,6 @@ from scipy.special import sph_harm, factorial
 from .utils import get_3d_angles, double_factorial
 
 
-
 def filters_bank(M, N, J, L=8):
     filters = {}
     filters['psi'] = []
@@ -45,13 +44,13 @@ def filters_bank(M, N, J, L=8):
     return filters
 
 
-def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0=2., fourier=False):
+def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0, fourier=True):
     filters = []
     for l in range(1, L+1):
-        filters_l = np.zeros((J+1, 2*l+1, M, N, O))
+        filters_l = np.zeros((J+1, 2*l+1, M, N, O), np.complex64)
         for j in range(J+1):
             sigma = sigma_0 * 2**j
-            solid_harmonic_3d(M, N, O, sigma, l, out_array=filters_l[j, :, :, :, ], fourier=fourier)
+            filters_l[j] = solid_harmonic_3d(M, N, O, sigma, l, fourier=fourier)
         filters.append(filters_l)
     return filters
 
@@ -112,25 +111,29 @@ def gabor_2d(M, N, sigma, theta, xi, slant=1.0, offset=0, fft_shift=None):
     return gab
 
 
-def solid_harmonic_3d(M, N, O, sigma, l, out_array=None, fourier=fourier):
-    if out_array is None:
-        solid_harm = np.zeros((2*(l+1), M, N, O), np.complex64)
-    else:
-        solid_harm = out_array
+def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
+    solid_harm = np.zeros((2*l+1, M, N, O), np.complex64)
     if fourier:
-        raise NotImplementedError("TODO: implement solid harm wavelets in Fourier")
-    grid = np.mgrid[-M//2:M//2, -N//2:N//2, -O//2:O//2]
-    r_square = (grid**2).sum(0)
-    polynomial_gaussian = r_square**(0.5*l) / sigma**l * np.exp(-0.5 * r_square / sigma**2)
+        grid = np.mgrid[-np.pi:np.pi:1j*M, -np.pi:np.pi:1j*N, -np.pi:np.pi:1j*O]
+        r_square = (grid**2).sum(0)
+        polynomial_gaussian = r_square**(0.5*l) * sigma**l * np.exp(-0.5 * r_square * sigma**2)
+    else:
+        grid = np.mgrid[-M//2:M//2, -N//2:N//2, -O//2:O//2]
+        r_square = (grid**2).sum(0)
+        polynomial_gaussian = r_square**(0.5*l) / sigma**l * np.exp(-0.5 * r_square / sigma**2)
+
     polar, azimuthal = get_3d_angles(grid)
 
     for i_m, m in enumerate(range(-l, l+1)):
         solid_harm[i_m] = sph_harm(m, l, azimuthal, polar) * polynomial_gaussian
 
+    norm_factor = 1.
     if l % 2 == 0:
-        norm_factor = 1. / (sigma**3 * np.pi * np.sqrt(l+0.5) * double_factorial(l+1))
+        norm_factor /= sigma**3 * np.pi * np.sqrt(l+0.5) * double_factorial(l+1)
     else :
-        norm_factor = 1. / (sigma**3 * np.power(2, (l+1)/2) * np.sqrt(np.pi*(2*l+1)) * factorial((l+1)/2))
+        norm_factor /= sigma**3 * 2**(0.5*(l+1)) * np.sqrt(np.pi*(2*l+1)) * factorial((l+1)/2)
+    if fourier:
+        norm_factor *= 4 * np.pi * (-1j)**l
     solid_harm *= norm_factor
 
-    return solid_harm
+    return np.fft.ifftshift(solid_harm)

@@ -44,16 +44,39 @@ python setup.py install
 ## Usage
 
 Example:
+  - 2D Gabor scattering:
+    ```python
+    import torch
+    from scatwave.scattering import Scattering, SolidHarmonicScattering
 
-```python
-import torch
-from scatwave.scattering import Scattering
+    scat = Scattering(M=32, N=32, J=2).cuda()
+    x = torch.randn(1, 3, 32, 32).cuda()
 
-scat = Scattering(M=32, N=32, J=2).cuda()
-x = torch.randn(1, 3, 32, 32).cuda()
+    print scat(x).size()
 
-print scat(x).size()
-```
+    s_harm_scat = SolidHarmonicScattering(M=64, N=64, O=64, J=2, L=1)
+    x_2 = torch.zeros(1, 64, 64, 64)
+
+    print s_harm_scat(x_2).size()
+    ```
+  - 3D Solid harmonic scattering:
+    ```python
+    import numpy as np
+    import torch
+    from scatwave.scattering import SolidHarmonicScattering
+    from scatwave.utils import generate_sum_of_gaussians
+
+    centers = np.zeros((1, 3))
+    sigma = 4.
+    M, N, O = 64, 64, 64
+    signal = generate_sum_of_gaussians(centers, sigma, M, N, O).reshape(1, M, N, O)
+
+    x = torch.from_numpy(signal)
+
+    scat = SolidHarmonicScattering(M=M, N=N, O=O, J=2, L=2)
+
+    print scat(x, [1, 2]).size()
+    ```
 
 
 ## Contribution

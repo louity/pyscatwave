@@ -11,10 +11,21 @@ import numpy as np
 from cupy.cuda.function import Module
 from cupy.cuda import device
 from string import Template
-from scipy.signal import fft_convolve
 
 
 Stream = namedtuple('Stream', ['ptr'])
+
+
+def generate_sum_of_gaussians(centers, sigma, M, N, O):
+    grid = np.mgrid[-M//2:M//2, -N//2:N//2, -O//2:O//2]
+    n_centers = centers.shape[0]
+    sum_of_gaussian = np.zeros((M, N, O))
+
+    for i_center in range(n_centers):
+        center = centers[i_center].reshape((3, 1, 1, 1))
+        sum_of_gaussian += np.exp(-0.5 * ((grid - center)**2).sum(0) / sigma**2)
+
+    return sum_of_gaussian / ((2 * np.pi)**1.5 * sigma**3)
 
 
 def compute_integrals(signal, integral_powers):
@@ -32,14 +43,7 @@ def compute_integrals(signal, integral_powers):
     return integrals
 
 
-def spatial_subsample(signal, stride):
-    raise NotImplementedError("TODO")
-
-
-def periodize_filters(filters, ratio):
-    raise NotImplementedError("TODO")
-
-def solid_harmonic_convolution_and_modulus(signal, filters_l):
+def solid_harmonic_convolution_and_modulus(signal, filters_l_fourier):
     """Computes solid harmonic convolution + modulus for a given l.
 
     Input args:
@@ -49,18 +53,10 @@ def solid_harmonic_convolution_and_modulus(signal, filters_l):
     Returns:
         convolution_modulus: 3D signal of shape (M, N, O)
     """
-    l = (filters_l.shape[0] - 1) // 2
-    if signal.shape != filters_l.shape[1:]:
-        M, N, O = signal.shape
-        M_, N_, O_ = filters_l.shape[1:]
-        assert (M % M_ == 0) and  (M / M_ == N / N_) and (O / O_ == N / N_), 'shapes incompatible'
-        ratio =  int(M / M_)
-        filters = periodize_filters(filters_l, ratio)
-    else:
-        filters = filters_l
     convolution_modulus = np.zeros_like(signal)
-    for m in range(2*l+1):
-        convolution_modulus += np.abs(fft_convolve(signal, filters[m]))**2
+    for m in range(filters_l_fourier.shape[0]):
+        convolution_modulus += np.abs(np.fft.ifftn(
+            np.fft.fftn(signal, axes=(0,1,2)) * filters_l_fourier[m], axes=(0,1,2)))**2
     return np.sqrt(convolution_modulus)
 
 

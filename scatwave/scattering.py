@@ -7,7 +7,7 @@ __all__ = ['Scattering']
 
 import warnings
 import torch
-from .utils import cdgmm, Modulus, Periodize, Fft, solid_harmonic_convolution_and_modulus, spatial_subsample, compute_integrals
+from .utils import cdgmm, Modulus, Periodize, Fft, solid_harmonic_convolution_and_modulus, compute_integrals
 from .filters_bank import filters_bank, solid_harmonic_filters_bank
 from torch.legacy.nn import SpatialReflectionPadding as pad_function
 
@@ -22,12 +22,12 @@ class SolidHarmonicScattering(object):
         J: number of scales
         L: number of l values
     """
-    def __init__(self, M, N, O, J, L):
+    def __init__(self, M, N, O, J, L, sigma_0):
         super(SolidHarmonicScattering, self).__init__()
-        self.M, self.N, self.O, self.J, self.L = M, N, O, J, L
-        self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.J, self.L)
+        self.M, self.N, self.O, self.J, self.L, self.sigma_0 = M, N, O, J, L, sigma_0
+        self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.J, self.L, sigma_0)
 
-    def forward(self, input, integral_powers):
+    def forward(self, input, integral_powers=[1, 2]):
         if not torch.is_tensor(input):
             raise(TypeError('The input should be a torch.cuda.FloatTensor, a torch.FloatTensor or a torch.DoubleTensor'))
 
@@ -42,27 +42,25 @@ class SolidHarmonicScattering(object):
 
         Q = len(integral_powers)
         n_inputs = input.size(0)
-        s_order_1 = np.zeros((n_inputs, self.L, self.J+1, Q))
-        s_order_2 = np.zeros((n_inputs, self.L, self.J*(self.J+1)/2, Q))
+        scat_coef = torch.zeros((n_inputs, self.L, self.J+1 + self.J*(self.J+1)/2, Q))
 
         for l in range(1, self.L + 1):
             filters_l = self.filters[l-1]
             for i_input in range(n_inputs):
-                i_coef = 0
+                i_coef = self.J+1
                 for j_1 in range(self.J+1):
-                    conv_modulus = solid_harmonic_convolution_and_modulus(input[i_input], filters_l[j_1]) # conv_modulus ~ (M, N, O), input[i_input] ~ (M, N ,O), filters_l[j_1] ~ (2l+1, M, N, O)
-                    s_order_1[i_input, l-1, j_1] = compute_integrals(conv_modulus, integral_powers)
-                    conv_modulus_subsampled = spatial_subsample(conv_modulus, 2**j_1) # conv_modulus_subsampled ~ (M/2**j_1, N/2**j_1, O/2**j_1), conv_modulus ~ (M, N, O)
+                    conv_modulus = solid_harmonic_convolution_and_modulus(input[i_input].numpy(), filters_l[j_1]) # conv_modulus ~ (M, N, O), input[i_input] ~ (M, N ,O), filters_l[j_1] ~ (2l+1, M, N, O)
+                    scat_coef[i_input, l-1, j_1] = torch.from_numpy(compute_integrals(conv_modulus, integral_powers))
                     for j_2 in range(j_1+1, self.J+1):
-                        conv_modulus_2 = solid_harmonic_convolution_and_modulus(conv_modulus_subsampled, filters_l[j_2]) # conv_modulus_2 ~ (M/2**j_1, N/2**j_1, O/2**j_1)
-                        s_order_2[i_input, l-1, i_coef] = compute_integrals(conv_modulus_2, integral_powers)
+                        conv_modulus_2 = solid_harmonic_convolution_and_modulus(conv_modulus, filters_l[j_2]) # conv_modulus_2 ~ (M, N, O)
+                        scat_coef[i_input, l-1, i_coef] = torch.from_numpy(compute_integrals(conv_modulus_2, integral_powers))
                         i_coef += 1
 
-        return s_order_1, s_order_2
-
+        return scat_coef
 
     def __call__(self, input, integral_powers):
         return self.forward(input, integral_powers)
+
 
 class Scattering(object):
     """Scattering module.
