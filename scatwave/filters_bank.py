@@ -145,9 +145,9 @@ def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
         solid_harm[i_m] = sph_harm(m, l, azimuthal, polar) * polynomial_gaussian
 
     if l % 2 == 0:
-        norm_factor = 1. / (np.pi * np.sqrt(l+0.5) * double_factorial(l+1))
+        norm_factor = 1. / (2 * np.pi * np.sqrt(l+0.5) * double_factorial(l+1))
     else :
-        norm_factor = 1. / (2**(0.5*(l+1)) * np.sqrt(np.pi*(2*l+1)) * factorial((l+1)/2))
+        norm_factor = 1. / (2**(0.5*(l+3)) * np.sqrt(np.pi*(2*l+1)) * factorial((l+1)/2))
 
     if fourier:
         norm_factor *= (2 * np.pi)**1.5 * (-1j)**l
