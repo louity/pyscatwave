@@ -69,7 +69,7 @@ def get_3d_angles(cartesian_grid):
     """
     z, y, x = cartesian_grid
     azimuthal = np.arctan2(y, x)
-    rxy = np.sqrt(x ** 2 + y ** 2)
+    rxy = np.sqrt(x**2 + y**2)
     polar = np.arctan2(z, rxy) + np.pi / 2
     return polar, azimuthal
 
