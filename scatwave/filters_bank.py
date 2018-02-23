@@ -130,7 +130,7 @@ def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
                     [m, 0, 0, 0] for m = 0 ... 2*l+1
     """
     solid_harm = np.zeros((2*l+1, M, N, O), np.complex64)
-    grid = np.mgrid[-M//2:M//2, -N//2:N//2, -O//2:O//2].astype('float32')
+    grid = np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32')
 
     if fourier:
         grid[0] *= 2 * np.pi / M
