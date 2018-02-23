@@ -47,10 +47,12 @@ def filters_bank(M, N, J, L=8):
 def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0, fourier=True):
     filters = []
     for l in range(1, L+1):
-        filters_l = np.zeros((J+1, 2*l+1, M, N, O), np.complex64)
+        filters_l = torch.zeros(J+1, 2*l+1, M, N, O, 2)
         for j in range(J+1):
             sigma = sigma_0 * 2**j
-            filters_l[j] = solid_harmonic_3d(M, N, O, sigma, l, fourier=fourier)
+            solid_harm = solid_harmonic_3d(M, N, O, sigma, l, fourier=fourier)
+            filters_l[j, :, :, :, :, 0] = torch.from_numpy(solid_harm.real)
+            filters_l[j, :, :, :, :, 1] = torch.from_numpy(solid_harm.imag)
         filters.append(filters_l)
     return filters
 

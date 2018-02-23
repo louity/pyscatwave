@@ -8,6 +8,7 @@ import torch
 from skcuda import cublas, cufft
 from pynvrtc.compiler import Program
 import numpy as np
+import pyfftw
 from cupy.cuda.function import Module
 from cupy.cuda import device
 from string import Template
@@ -28,36 +29,12 @@ def generate_sum_of_gaussians(centers, sigma, M, N, O):
     return sum_of_gaussian / ((2 * np.pi)**1.5 * sigma**3)
 
 
-def compute_integrals(signal, integral_powers):
-    """Computes integrals of the signal to the given powers.
-
-    Input args:
-        signal: 3D signal to be integrated
-        integral_powers: list of positive floats, powers of the integrals
-    Returns:
-        integrals: list of the integrals
-    """
-    integrals = np.zeros(len(integral_powers))
+def compute_integrals(input, integral_powers):
+    """Computes integrals of the input to the given powers."""
+    integrals = torch.zeros(input.size(0), len(integral_powers))
     for i_q, q in enumerate(integral_powers):
-        integrals[i_q] = np.sum(signal**q)
+        integrals[:, i_q] = torch.from_numpy((input.numpy()**q).sum(axis=(1,2,3)))
     return integrals
-
-
-def solid_harmonic_convolution_and_modulus(signal, filters_l_fourier):
-    """Computes solid harmonic convolution + modulus for a given l.
-
-    Input args:
-        signal: 3D signal of shape (M, N, O)
-        filters_l: 4D tensor of shape (2l+1, M, N, O), solid harmonic wavelets
-                   of order l
-    Returns:
-        convolution_modulus: 3D signal of shape (M, N, O)
-    """
-    convolution_modulus = np.zeros_like(signal)
-    for m in range(filters_l_fourier.shape[0]):
-        convolution_modulus += np.abs(np.fft.ifftn(
-            np.fft.fftn(signal, axes=(0,1,2)) * filters_l_fourier[m], axes=(0,1,2)))**2
-    return np.sqrt(convolution_modulus)
 
 
 def get_3d_angles(cartesian_grid):
@@ -216,87 +193,75 @@ class Modulus(object):
         return out
 
 
-class Fft(object):
-    """This class builds a wrapper to the FFTs kernels and cache them.
-
-    As a try, the library will purely work with complex data. The FFTS are UNORMALIZED.
-        """
+class Fft3d(object):
+    """This class builds a wrapper to 3D FFTW on CPU / cuFFT on nvidia GPU."""
 
     def __init__(self):
-        self.fft_cache = defaultdict(lambda: None)
+        self.fftw_cache = defaultdict(lambda: None)
+        self.cufft_cache = defaultdict(lambda: None)
 
-    def buildCache(self, input, type):
-        k = input.ndimension() - 3
-        n = np.asarray([input.size(k), input.size(k+1)], np.int32)
-        batch = input.nelement() // (2*input.size(k) * input.size(k + 1))
-        idist = input.size(k) * input.size(k + 1)
-        istride = 1
-        ostride = istride
-        odist = idist
-        rank = 2
-        plan = cufft.cufftPlanMany(rank, n.ctypes.data, n.ctypes.data, istride,
-                                   idist, n.ctypes.data, ostride, odist, type, batch)
-        self.fft_cache[(input.size(), type, input.get_device())] = plan
+    def buildCufftCache(self, input, type):
+        raise NotImplementedError('cuFFT cache not implemented yet')
+        # self.cufft_cache = None
 
-    def __del__(self):
-        for keys in self.fft_cache:
-            try:
-                cufft.cufftDestroy(self.fft_cache[keys])
-            except:
-                pass
+    def buildFftwCache(self, input, inverse):
+        direction = 'FFTW_BACKWARD' if inverse else 'FFTW_FORWARD'
+        batch_size, M, N, O, _ = input.size()
+        fftw_input_array = pyfftw.empty_aligned((batch_size, M, N, O), dtype='complex64')
+        fftw_output_array = pyfftw.empty_aligned((batch_size, M, N, O), dtype='complex64')
+        fftw_object = pyfftw.FFTW(fftw_input_array, fftw_output_array, axes=(1, 2, 3), direction=direction, threads=1)
+        self.fftw_cache[(input.size(), inverse)] = (fftw_input_array, fftw_output_array, fftw_object)
 
-    def __call__(self, input, direction='C2C', inplace=False, inverse=False):
-        if direction == 'C2R':
-            inverse = True
-
+    def __call__(self, input, inverse=False):
         if not isinstance(input, torch.cuda.FloatTensor):
             if not isinstance(input, (torch.FloatTensor, torch.DoubleTensor)):
                 raise(TypeError('The input should be a torch.cuda.FloatTensor, \
                                 torch.FloatTensor or a torch.DoubleTensor'))
             else:
-                input_np = input[..., 0].numpy() + 1.0j * input[..., 1].numpy()
                 f = lambda x: np.stack((np.real(x), np.imag(x)), axis=len(x.shape))
-                out_type = input.numpy().dtype
+                if(self.fftw_cache[(input.size(), inverse)] is None):
+                    self.buildFftwCache(input, inverse)
+                input_arr, output_arr, fftw_obj = self.fftw_cache[(input.size(), inverse)]
 
-                if direction == 'C2R':
-                    out = np.real(np.fft.ifft2(input_np)).astype(out_type)*input.size(-2)*input.size(-3)
-                    return torch.from_numpy(out)
+                input_arr[:] = input[..., 0].numpy() + 1.0j * input[..., 1].numpy()
+                fftw_obj()
 
-                if inplace:
-                    if inverse:
-                        out = f(np.fft.ifft2(input_np)).astype(out_type)*input.size(-2)*input.size(-3)
-                    else:
-                        out = f(np.fft.fft2(input_np)).astype(out_type)
-                    input.copy_(torch.from_numpy(out))
-                    return
-                else:
-                    if inverse:
-                        out = f(np.fft.ifft2(input_np)).astype(out_type)*input.size(-2)*input.size(-3)
-                    else:
-                        out = f(np.fft.fft2(input_np)).astype(out_type)
-                    return torch.from_numpy(out)
+                return torch.from_numpy(f(output_arr).astype(input.numpy().dtype))
 
-        if not iscomplex(input):
-            raise(TypeError('The input should be complex (e.g. last dimension is 2)'))
+        raise NotImplementedError("3d cuFFT wrapper not implemented yet.")
 
-        if (not input.is_contiguous()):
-            raise (RuntimeError('Tensors must be contiguous!'))
 
-        if direction == 'C2R':
-            output = input.new(input.size()[:-1])
-            if(self.fft_cache[(input.size(), cufft.CUFFT_C2R, input.get_device())] is None):
-                self.buildCache(input, cufft.CUFFT_C2R)
-            cufft.cufftExecC2R(self.fft_cache[(input.size(), cufft.CUFFT_C2R, input.get_device())],
-                               input.data_ptr(), output.data_ptr())
-            return output
-        elif direction == 'C2C':
-            output = input.new(input.size()) if not inplace else input
-            flag = cufft.CUFFT_INVERSE if inverse else cufft.CUFFT_FORWARD
-            if (self.fft_cache[(input.size(), cufft.CUFFT_C2C, input.get_device())] is None):
-                self.buildCache(input, cufft.CUFFT_C2C)
-            cufft.cufftExecC2C(self.fft_cache[(input.size(), cufft.CUFFT_C2C, input.get_device())],
-                               input.data_ptr(), output.data_ptr(), flag)
-            return output
+def cdgmm3d(A, B):
+    """Pointwise multiplication of 3d matrices in CPU or GPU."""
+    A, B = A.contiguous(), B.contiguous()
+
+    if A.size()[-4:] != B.size():
+        raise RuntimeError('The filters are not compatible for multiplication!')
+
+    if not iscomplex(A) or not iscomplex(B):
+        raise TypeError('The input, filter and output should be complex')
+
+    if B.ndimension() != 4:
+        raise RuntimeError('The filters must be simply a complex array!')
+
+    if type(A) is not type(B):
+        raise RuntimeError('A and B should be same type!')
+
+    if isinstance(A, (torch.FloatTensor, torch.DoubleTensor)):
+        C = A.new(A.size())
+
+        A_r = A[..., 0].contiguous().view(-1, A.size(-2)*A.size(-3)*A.size(-4))
+        A_i = A[..., 1].contiguous().view(-1, A.size(-2)*A.size(-3)*A.size(-4))
+
+        B_r = B[..., 0].contiguous().view(B.size(-2)*B.size(-3)*B.size(-4)).unsqueeze(0).expand_as(A_i)
+        B_i = B[..., 1].contiguous().view(B.size(-2)*B.size(-3)*B.size(-4)).unsqueeze(0).expand_as(A_r)
+
+        C[..., 0].copy_(A_r * B_r - A_i * B_i)
+        C[..., 1].copy_(A_r * B_i + A_i * B_r)
+
+        return C
+    else:
+        raise NotImplementedError("Cuda cdgmm not implemented")
 
 
 class Fft(object):
