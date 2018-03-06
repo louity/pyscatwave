@@ -19,14 +19,19 @@ Stream = namedtuple('Stream', ['ptr'])
 
 def generate_sum_of_gaussians(centers, sigma, M, N, O):
     grid = np.mgrid[-M//2:M//2, -N//2:N//2, -O//2:O//2]
-    n_centers = centers.shape[0]
-    sum_of_gaussian = np.zeros((M, N, O))
+    n_signals = centers.shape[0]
+    signals = torch.zeros((n_signals, M, N, O))
 
-    for i_center in range(n_centers):
-        center = centers[i_center].reshape((3, 1, 1, 1))
-        sum_of_gaussian += np.exp(-0.5 * ((grid - center)**2).sum(0) / sigma**2)
+    for i_signal in range(n_signals):
+        sum_of_gaussian = np.zeros((M, N, O), dtype='float32')
+        n_centers = centers[i_signal].shape[0]
+        for i_center in range(n_centers):
+            center = centers[i_signal, i_center].reshape((3, 1, 1, 1))
+            sum_of_gaussian += np.exp(-0.5 * ((grid - center)**2).sum(0) / sigma**2)
+        sum_of_gaussian /= (2 * np.pi)**1.5 * sigma**3
+        signals[i_signal] = torch.from_numpy(sum_of_gaussian)
 
-    return sum_of_gaussian / ((2 * np.pi)**1.5 * sigma**3)
+    return signals
 
 
 def compute_integrals(input, integral_powers):
