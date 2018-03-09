@@ -1,37 +1,34 @@
 """
-Authors: Eugene Belilovsky, Edouard Oyallon and Sergey Zagoruyko
-All rights reserved, 2017.
-"""
+Authors: Eugene Belilovsky, Edouard Oyallon and Sergey Zagoruyko All rights reserved, 2017.  """
 from collections import defaultdict, namedtuple
 
 import torch
 from skcuda import cublas, cufft
 from pynvrtc.compiler import Program
+import numba
 import numpy as np
 import pyfftw
 from cupy.cuda.function import Module
 from cupy.cuda import device
 from string import Template
+import matplotlib.pyplot as plt
 
 
 Stream = namedtuple('Stream', ['ptr'])
 
-
-def generate_sum_of_gaussians(centers, sigma, M, N, O):
-    grid = np.mgrid[-M//2:M//2, -N//2:N//2, -O//2:O//2]
+def generate_sum_of_gaussians(centers, sigma, M, N, O, fourier=False):
+    grid = np.mgrid[-M//2:-M//2+M, -N//2:-N//2+N, -O//2:-O//2+O].astype('float32')
     n_signals = centers.shape[0]
-    signals = torch.zeros((n_signals, M, N, O))
+    signals = np.zeros((n_signals, M, N, O))
 
     for i_signal in range(n_signals):
-        sum_of_gaussian = np.zeros((M, N, O), dtype='float32')
         n_centers = centers[i_signal].shape[0]
         for i_center in range(n_centers):
             center = centers[i_signal, i_center].reshape((3, 1, 1, 1))
-            sum_of_gaussian += np.exp(-0.5 * ((grid - center)**2).sum(0) / sigma**2)
-        sum_of_gaussian /= (2 * np.pi)**1.5 * sigma**3
-        signals[i_signal] = torch.from_numpy(sum_of_gaussian)
+            signals[i_signal] += np.exp(-0.5 * ((grid - center)**2).sum(0) / sigma**2)
+    signals /= (2 * np.pi)**1.5 * sigma**3
 
-    return signals
+    return torch.from_numpy(signals)
 
 
 def compute_integrals(input, integral_powers):
@@ -54,6 +51,14 @@ def get_3d_angles(cartesian_grid):
     rxy = np.sqrt(x**2 + y**2)
     polar = np.arctan2(z, rxy) + np.pi / 2
     return polar, azimuthal
+
+
+def plot_slices(signal):
+    M, N, O = signal.shape
+    plt.matshow(signal[M//2,:,:])
+    plt.matshow(signal[:,N//2,:])
+    plt.matshow(signal[:,:,O//2])
+    plt.show()
 
 
 def double_factorial(l):

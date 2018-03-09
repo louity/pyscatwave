@@ -7,8 +7,8 @@ __all__ = ['Scattering']
 
 import warnings
 import torch
-from .utils import cdgmm, cdgmm3d, Modulus, Periodize, Fft, Fft3d, compute_integrals
-from .filters_bank import filters_bank, solid_harmonic_filters_bank
+from .utils import cdgmm, cdgmm3d, Modulus, Periodize, Fft, Fft3d, compute_integrals, plot_slices
+from .filters_bank import filters_bank, solid_harmonic_filters_bank, gaussian_filters_bank
 from torch.legacy.nn import SpatialReflectionPadding as pad_function
 
 
@@ -26,15 +26,28 @@ class SolidHarmonicScattering(object):
         super(SolidHarmonicScattering, self).__init__()
         self.M, self.N, self.O, self.J, self.L, self.sigma_0 = M, N, O, J, L, sigma_0
         self.filters = solid_harmonic_filters_bank(self.M, self.N, self.O, self.J, self.L, sigma_0)
+        self.gaussian_filters = gaussian_filters_bank(self.M, self.N, self.O, self.J+1, sigma_0)
         self.fft = Fft3d()
 
     def _pad(self, input):
-        output = input.new(input.size(0), input.size(1), input.size(2), input.size(3), 2).fill_(0)
+        output = torch.zeros(input.size() + (2,)).type(torch.FloatTensor)
         output.narrow(output.ndimension()-1, 0, 1).copy_(input)
         return output
 
     def _unpad(self, in_):
         return in_[..., 1:-1, 1:-1]
+
+    def _compute_local_scattering_coefs(self, padded_input, points, j):
+        local_coefs = torch.zeros(padded_input.size(0), points.size(1))
+        convolved_input = self.fft(
+            cdgmm3d(self.fft(padded_input, inverse=False), self.gaussian_filters[j+1])
+            , inverse=True)
+        for i_signal in range(padded_input.size(0)):
+            for i_point in range(points[i_signal].size(0)):
+                x, y, z = points[i_signal, i_point, 0], points[i_signal, i_point, 1], points[i_signal, i_point, 2]
+                local_coefs[i_signal,i_point] = convolved_input[i_signal, int(x), int(y), int(z), 0]
+        return local_coefs
+
 
     def _convolution_and_modulus(self, padded_input, l, j):
         fft = self.fft
@@ -46,7 +59,7 @@ class SolidHarmonicScattering(object):
             ).sum(-1)[..., 0]
         return torch.sqrt(convolution_modulus)
 
-    def forward(self, input, integral_powers=[1, 2]):
+    def forward(self, input, integral_powers=[1, 2], order_2=True, local_computation_points=None, show_slices=False):
         if not torch.is_tensor(input):
             raise(TypeError('The input should be a torch.cuda.FloatTensor, a torch.FloatTensor or a torch.DoubleTensor'))
 
@@ -64,24 +77,41 @@ class SolidHarmonicScattering(object):
 
         Q = len(integral_powers)
         n_inputs = input.size(0)
-        scat_coef = torch.zeros((n_inputs, self.L, self.J+1 + self.J*(self.J+1)/2, Q))
+        n_j_coefs = self.J+1
+        if order_2:
+            n_j_coefs += self.J*(self.J+1) / 2
+        scat_coefs = torch.zeros((n_inputs, self.L,  n_j_coefs, Q))
+        if local_computation_points is not None:
+            n_points = local_computation_points.size(1) #FIXME: =! signals can have =! num points
+            local_scat_coefs = torch.zeros((n_inputs, n_points, self.L,  n_j_coefs))
 
         padded_input = pad(input)
         for l in range(1, self.L + 1):
             i_coef = self.J+1
             for j_1 in range(self.J+1):
                 conv_modulus = convolution_and_modulus(padded_input, l, j_1)
-                scat_coef[:, l-1, j_1] = compute_integrals(conv_modulus, integral_powers)
+                if show_slices:
+                    print(l, j_1)
+                    for i in range(conv_modulus.size(0)):
+                        plot_slices(conv_modulus[i].numpy())
+                scat_coefs[:, l-1, j_1] = compute_integrals(conv_modulus, integral_powers)
                 padded_conv_modulus = pad(conv_modulus)
+                if local_computation_points is not None:
+                    local_scat_coefs[:, :, l-1, j_1] = self._compute_local_scattering_coefs(
+                        padded_conv_modulus, local_computation_points, j_1)
+                if not order_2:
+                    continue
                 for j_2 in range(j_1+1, self.J+1):
                     conv_modulus_2 = convolution_and_modulus(padded_conv_modulus, l, j_2)
-                    scat_coef[:, l-1, i_coef] = compute_integrals(conv_modulus_2, integral_powers)
+                    scat_coefs[:, l-1, i_coef] = compute_integrals(conv_modulus_2, integral_powers)
                     i_coef += 1
+        if local_computation_points is not None:
+            return scat_coefs, local_scat_coefs
+        return scat_coefs
 
-        return scat_coef
-
-    def __call__(self, input, integral_powers):
-        return self.forward(input, integral_powers)
+    def __call__(self, input, integral_powers, order_2=True, local_computation_points=None, show_slices=False):
+        return self.forward(input, integral_powers, order_2=order_2,
+                            local_computation_points=local_computation_points, show_slices=show_slices)
 
 
 class Scattering(object):
