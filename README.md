@@ -11,11 +11,7 @@ The software uses NumPy with PyTorch + PyFFTW on CPU, and PyTorch + CuFFT on GPU
 This code was very largely inspired by [*PyScatWave*](https://github.com/edouardoyallon/pyscatwave) by E. Oyallon, E. Belilovsky, S. Zagoruyko, [*Scaling the Scattering Transform: Deep Hybrid Networks*](https://arxiv.org/abs/1703.08961)
 
 ## Benchmarks
-We do some simple timings and comparisons to the previous (multi-core CPU) implementation of scattering (ScatnetLight). We benchmark the software using a 1080 GPU. Below we show input sizes (WxHx3xBatchSize) and speed:
-
-32 × 32 × 3 × 128 (J=2)- 0.03s (speed of 8x vs ScatNetLight)
-
-256 × 256 × 3 × 128 (J=2) - 0.71 s (speed up of 225x vs ScatNetLight)
+TODO
 
 ## Installation
 
@@ -60,4 +56,4 @@ All contributions are welcome.
 
 ## Authors
 
-Louis Thiry, base on code by Edouard Oyallon, Eugene Belilovsky, Sergey Zagoruyko
+Louis Thiry, based on code by Edouard Oyallon, Eugene Belilovsky and Sergey Zagoruyko
