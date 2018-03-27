@@ -1,8 +1,5 @@
-cupy
-torch >= 0.1.11
+torch >= 0.3.1
 numpy
 scikit-cuda
 scipy
-pynvrtc
 tqdm
-git+git://github.com/pytorch/tnt.git#egg=tnt
