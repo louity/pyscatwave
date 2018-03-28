@@ -38,14 +38,15 @@ centers = np.zeros((1, 1, 3))
 sigma = 8.
 M, N, O, J, L = 128, 128, 128, 0, 3
 
-scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma)
-
-x = generate_sum_of_gaussians(centers, sigma, M, N, O)
-s_cpu = scat(x, [1])
+# integral scattering coefficients
+s_cpu = scat(x, order_2=False, method='integral', method_args={'integral_powers': [1]})
 print('CPU', s_cpu)
+s_gpu = scat(x_gpu, order_2=False, method='integral', method_args={'integral_powers': [1]})
+print('GPU', s_gpu)
 
-x_gpu = x.cuda()
-s_gpu = scat(x_gpu, [1])
+# standard scattering coefficients
+s_cpu = scat(x, order_2=False, method='standard')
+s_gpu = scat(x_gpu, order_2=False, method='standard')
 print('GPU', s_gpu)
 ```
 

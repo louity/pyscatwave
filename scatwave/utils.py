@@ -1,6 +1,5 @@
-"""
-Authors: Eugene Belilovsky, Edouard Oyallon and Sergey Zagoruyko All rights reserved, 2017.  """
-from collections import defaultdict, namedtuple
+"""Author: Louis Thiry, All rights reserved, 2018."""
+from collections import defaultdict
 
 import torch
 from skcuda import cufft
@@ -33,11 +32,22 @@ def generate_sum_of_gaussians(centers, sigma, M, N, O, fourier=False):
         signals /= (2 * np.pi)**1.5 * sigma**3
         return torch.from_numpy(signals)
 
+
+def subsample(input, j):
+    return input.unfold(3, 1, 2**j).unfold(2, 1, 2**j).unfold(1, 1, 2**j).contiguous()
+
+
+def complex_modulus(input):
+    modulus = input.new(input.size()).fill_(0)
+    modulus[..., 0] += torch.sqrt((input**2).sum(-1))
+    return modulus
+
+
 def compute_integrals(input, integral_powers):
     """Computes integrals of the input to the given powers."""
-    integrals = torch.zeros(input.size(0), len(integral_powers))
+    integrals = torch.zeros(input.size(0), len(integral_powers), 1)
     for i_q, q in enumerate(integral_powers):
-        integrals[:, i_q] = (input**q).view(input.size(0), -1).sum(1).cpu()
+        integrals[:, i_q, 0] = (input**q).view(input.size(0), -1).sum(1).cpu()
     return integrals
 
 
@@ -70,6 +80,12 @@ def iscomplex(input):
     return input.size(-1) == 2
 
 
+def to_complex(input):
+    output = input.new(input.size() + (2,)).fill_(0)
+    output[..., 0] = input
+    return output
+
+
 class Fft3d(object):
     """This class builds a wrapper to 3D FFTW on CPU / cuFFT on nvidia GPU."""
 
@@ -99,7 +115,7 @@ class Fft3d(object):
         fftw_object = pyfftw.FFTW(fftw_input_array, fftw_output_array, axes=(1, 2, 3), direction=direction, threads=1)
         self.fftw_cache[(input.size(), inverse)] = (fftw_input_array, fftw_output_array, fftw_object)
 
-    def __call__(self, input, inverse=False):
+    def __call__(self, input, inverse=False, normalized=False):
         if not isinstance(input, torch.cuda.FloatTensor):
             if not isinstance(input, (torch.FloatTensor, torch.DoubleTensor)):
                 raise(TypeError('The input should be a torch.cuda.FloatTensor, \
@@ -123,23 +139,23 @@ class Fft3d(object):
             self.buildCufftCache(input, ffttype)
         cufft.cufftExecC2C(self.cufft_cache[(input.size(), ffttype, input.get_device())],
                            input.data_ptr(), output.data_ptr(), flag)
-        if inverse:
+        if normalized:
             output /= input.size(1) * input.size(2) * input.size(3)
         return output
 
 
 def cdgmm3d(A, B):
-    """Pointwise multiplication of 3d matrices in CPU or GPU."""
+    """Pointwise multiplication of complex tensors."""
     A, B = A.contiguous(), B.contiguous()
 
     if A.size()[-4:] != B.size():
-        raise RuntimeError('The filters are not compatible for multiplication!')
+        raise RuntimeError('The tensors are not compatible for multiplication!')
 
     if not iscomplex(A) or not iscomplex(B):
         raise TypeError('The input, filter and output should be complex')
 
     if B.ndimension() != 4:
-        raise RuntimeError('The filters must be simply a complex array!')
+        raise RuntimeError('The second tensor must be simply a complex array!')
 
     if type(A) is not type(B):
         raise RuntimeError('A and B should be same type!')
