@@ -7,19 +7,19 @@ from setuptools import setup, find_packages
 VERSION = '0.0.1'
 
 long_description = """
-Fast CPU/CUDA Scattering implementation
+Fast CPU/CUDA Solid Harmonic 3D Scattering implementation
 
-CuPy/PyTorch CUDA and NumPy/PyTorch CUDA implementation
+Numpy + PyTorch + FFTW / cuFFT implementation
 """
 
 setup_info = dict(
     # Metadata
     name='scatwave',
     version=VERSION,
-    author='Edouard Oyallon, Eugene Belilovsky, Sergey Zagoruyko',
-    author_email='edouard.oyallon@ens.fr, eugene.belilovsky@inria.fr, sergey.zagoruyko@enpc.fr',
-    url='https://github.com/edouardoyallon/pyscatwave',
-    description='Fast CPU/CUDA Scattering implementation',
+    author='Louis Thiry',
+    author_email='louis(dot)thiry<at>outlook(dot)fr',
+    url='https://github.com/louity/pyscatwave',
+    description='Fast CPU/CUDA Solid Harmonic 3D Scattering implementation',
     long_description=long_description,
     license='BSD',
 

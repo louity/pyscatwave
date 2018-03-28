@@ -45,14 +45,14 @@ class SolidHarmonicScattering(object):
                 local_coefs[i, j, 0] = convolved_input[i, int(x), int(y), int(z), 0]
         return local_coefs
 
-    def _compute_scattering_coefs(self, input, method, args):
+    def _compute_scattering_coefs(self, input, method, args, j):
         methods = ['standard', 'local', 'integral']
         if (not method in methods):
             raise(ValueError('method must be in {}'.format(methods)))
         if method == 'integral':
             return compute_integrals(input, args['integral_powers'])
         elif method == 'local':
-            return self._compute_local_scattering_coefs(input, args['points'], args['j'])
+            return self._compute_local_scattering_coefs(input, args['points'], j)
         elif method == 'standard':
             return self._compute_standard_scattering_coefs(input)
 
@@ -93,12 +93,12 @@ class SolidHarmonicScattering(object):
         for l in range(1, self.L + 1):
             for j_1 in range(self.J+1):
                 conv_modulus = convolution_and_modulus(_input, l, j_1)
-                s_order_1.append(compute_scattering_coefs(conv_modulus, method, method_args))
+                s_order_1.append(compute_scattering_coefs(conv_modulus, method, method_args, j_1))
                 if not order_2:
                     continue
                 for j_2 in range(j_1+1, self.J+1):
                     conv_modulus_2 = convolution_and_modulus(conv_modulus, l, j_2)
-                    s_order_2.append(compute_scattering_coefs(conv_modulus_2, method, method_args))
+                    s_order_2.append(compute_scattering_coefs(conv_modulus_2, method, method_args, j_2))
 
         if order_2:
             return torch.cat(s_order_1, -1), torch.cat(s_order_2, -1)
