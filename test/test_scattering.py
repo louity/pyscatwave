@@ -27,17 +27,20 @@ class TestScattering(unittest.TestCase):
     def testSolidHarmonicScattering(self):
         # Compare value to analytical formula in the case of a single Gaussian
         centers = np.zeros((1, 1, 3))
-        sigma_gaussian = 6.
-        sigma_wavelet = 8.
-        M, N, O, J, L = 128, 128, 128, 0, 3
+        sigma_gaussian = 3.
+        sigma_0_wavelet = 3.
+        M, N, O, J, L = 128, 128, 128, 1, 3
         x = sl.generate_sum_of_gaussians(centers, sigma_gaussian, M, N, O)
-        scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma_wavelet)
-        integral_powers = [1]
-        s = scat(x, integral_powers)
+        scat = SolidHarmonicScattering(M=M, N=N, O=O, J=J, L=L, sigma_0=sigma_0_wavelet)
+        args = {'integral_powers': [1]}
+        s = scat(x, order_2=False, method='integral', method_args=args)
+        print(s.size())
 
-        k = sigma_wavelet / np.sqrt(sigma_wavelet**2 + sigma_gaussian**2)
-        for l in range(L):
-            self.assertAlmostEqual(s[0, l, 0, 0], k**(l+1), places=2)
+        for j in range(J+1):
+            sigma_wavelet = sigma_0_wavelet*2**j
+            k = sigma_wavelet / np.sqrt(sigma_wavelet**2 + sigma_gaussian**2)
+            for l in range(L):
+                self.assertAlmostEqual(s[0, 0, j, l], k**(l+1), places=4)
 
 
 if __name__ == '__main__':
