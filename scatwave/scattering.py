@@ -50,7 +50,7 @@ class SolidHarmonicScattering(object):
         if (not method in methods):
             raise(ValueError('method must be in {}'.format(methods)))
         if method == 'integral':
-            return compute_integrals(input, args['integral_powers'])
+            return compute_integrals(input[..., 0], args['integral_powers'])
         elif method == 'local':
             return self._compute_local_scattering_coefs(input, args['points'], j)
         elif method == 'standard':
@@ -90,19 +90,23 @@ class SolidHarmonicScattering(object):
         s_order_2 = []
         _input = to_complex(input)
 
-        for l in range(1, self.L + 1):
+        for l in range(self.L+1):
+            s_order_1_l, s_order_2_l = [], []
             for j_1 in range(self.J+1):
                 conv_modulus = convolution_and_modulus(_input, l, j_1)
-                s_order_1.append(compute_scattering_coefs(conv_modulus, method, method_args, j_1))
+                s_order_1_l.append(compute_scattering_coefs(conv_modulus, method, method_args, j_1))
                 if not order_2:
                     continue
                 for j_2 in range(j_1+1, self.J+1):
                     conv_modulus_2 = convolution_and_modulus(conv_modulus, l, j_2)
-                    s_order_2.append(compute_scattering_coefs(conv_modulus_2, method, method_args, j_2))
+                    s_order_2_l.append(compute_scattering_coefs(conv_modulus_2, method, method_args, j_2))
+            s_order_1.append(torch.cat(s_order_1_l, -1))
+            if order_2:
+                s_order_2.append(torch.cat(s_order_2_l, -1))
 
         if order_2:
-            return torch.cat(s_order_1, -1), torch.cat(s_order_2, -1)
-        return torch.cat(s_order_1, -1)
+            return torch.stack(s_order_1, dim=-1), torch.stack(s_order_2, dim=-1)
+        return torch.stack(s_order_1, dim=-1)
 
     def __call__(self, input, order_2=False, method='standard', method_args=None):
         return self.forward(input, order_2=order_2, method=method, method_args=method_args)

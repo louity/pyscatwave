@@ -13,7 +13,7 @@ from .utils import get_3d_angles, double_factorial
 
 def solid_harmonic_filters_bank(M, N, O, J, L, sigma_0, fourier=True):
     filters = []
-    for l in range(1, L+1):
+    for l in range(L+1):
         filters_l = np.zeros((J+1, 2*l+1, M, N, O, 2), dtype='float32')
         for j in range(J+1):
             sigma = sigma_0 * 2**j
@@ -75,6 +75,13 @@ def solid_harmonic_3d(M, N, O, sigma, l, fourier=True):
         sigma = 1. / sigma
 
     r_square = (grid**2).sum(0)
+
+    if l == 0:
+        gaussian = np.exp(-0.5 * r_square / sigma**2).reshape((1, M, N, O)).astype('complex64')
+        if fourier:
+            return gaussian
+        return gaussian / ((2 *np.pi)**1.5 * sigma**3)
+
     polynomial_gaussian = r_square**(0.5*l) / sigma**l * np.exp(-0.5 * r_square / sigma**2)
 
     polar, azimuthal = get_3d_angles(grid)
